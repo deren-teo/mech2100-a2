@@ -33,7 +33,7 @@ class Designer:
 
     def member_force(self, strain, modulus, area):
         ''''''
-        return np.multiply(np.multiply(strain, modulus), area)
+        return (strain * modulus) * area
 
     def peak_forces(self):
         '''Calculates peak applied load forces.'''
@@ -70,9 +70,47 @@ class Designer:
 
         return np.array([centx, centy, weight, agravx, agravy, bgravx, bgravy])
 
-    # def dynamic_load(self):
-    #     ''''''
+    def dynamic_reaction(self):
+        ''''''
+        half_peak_forces = 0.5 * self.peak_forces()
 
+        a = self.si(self.data['A'])
+        b = self.si(self.data['B'])
+
+        afx = 5 * a * half_peak_forces / b
+        afy = -half_peak_forces
+        bfx = -afx
+        bfy = np.zeros(3) # roller support, no vertical reaction
+
+        return np.array([afx, afy, bfx, bfy])
+
+    def dynamic_load(self):
+        ''''''
+        ax, ay, bx, _ = self.dynamic_reaction()
+        half_peak_forces = 0.5 * self.peak_forces()
+
+        a = self.data['A']['val']
+        b = self.data['B']['val']
+        theta = np.arctan(b / a)
+
+        print(theta)
+        print(half_peak_forces)
+
+        ab = ay
+        ac = -ax
+        bc = half_peak_forces / np.sin(theta)
+        bd = -bx - bc * np.cos(theta)
+        cd = -bc
+        ce = ac + np.cos(theta) * (2 * bc)
+        de = bc
+        df = bd + np.cos(theta) * (2 * cd)
+        ef = cd
+        eg = ce + np.cos(theta) * (2 * de)
+        fg = bc
+        fh = np.zeros(3)
+        gh = -half_peak_forces
+
+        return np.array([ac, ce, eg, bd, df, fh, ab, bc, cd, de, ef, fg, gh])
 
     def export(self, overwrite=True):
         ''''''
@@ -90,5 +128,9 @@ class Designer:
         dw.write('CENTX', gravity_loading.reshape(7, 1))
 
         # Table 5
-        # dynamic_loading = self.dynamic_load()
-        # dw.write('AC', dynamic_loading)
+        dynamic_loading = self.dynamic_load()
+        dw.write('AC', dynamic_loading)
+
+        # Table 6
+        dynamic_reaction = self.dynamic_reaction()
+        dw.write('AFX', dynamic_reaction)
