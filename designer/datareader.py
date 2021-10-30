@@ -1,3 +1,4 @@
+import numpy as np
 # import xlwings
 
 class DataReader:
@@ -21,8 +22,8 @@ class DataReader:
             'JOINT': {'unt': 'na', 'val': 'D'},
             'JOINTTYPE': {'unt': 'na', 'val': 'overlap'},
             'SG': {'unt': 'na', 'val': 'DE'},
-            'PEAKSTRAIN': {'unt': 'uul', 'P': 145, 'Q': 195, 'R': 590},
-            'NPERHOUR': {'unt': 'ul', 'P': 200, 'Q': 420, 'R': 120},
+            'PEAKSTRAIN': {'unt': 'uul', 'val': np.array([145, 195, 590])},
+            'NPERHOUR': {'unt': 'ul', 'val': np.array([200, 420, 120])},
             'GRAV': {'unt': 'm/s2', 'val': 9.81},
             'MODULUS': {'unt': 'MPa', 'val': 207000},
             'DENSITY': {'unt': 'kg/m3', 'val': 7850},

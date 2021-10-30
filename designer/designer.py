@@ -38,7 +38,7 @@ class Designer:
     def peak_forces(self):
         '''Calculates peak applied load forces.'''
 
-        strain = np.array([self.data['PEAKSTRAIN'][x] for x in ['P', 'Q', 'R']])
+        strain = self.data['PEAKSTRAIN']['val']
         modulus = self.data['MODULUS']['val']
         area = self.member_area('BRACE')
 
