@@ -93,9 +93,6 @@ class Designer:
         b = self.data['B']['val']
         theta = np.arctan(b / a)
 
-        print(theta)
-        print(half_peak_forces)
-
         ab = ay
         ac = -ax
         bc = half_peak_forces / np.sin(theta)
@@ -112,6 +109,30 @@ class Designer:
 
         return np.array([ac, ce, eg, bd, df, fh, ab, bc, cd, de, ef, fg, gh])
 
+    def nominal_stress(self):
+        ''''''
+        dynamic_loading = self.dynamic_load()
+        bd, cd = dynamic_loading[3], dynamic_loading[8]
+        df, de = dynamic_loading[4], dynamic_loading[9]
+        forces = np.array([bd, cd, df, de])
+
+        chord_areas = np.ones(3) * self.member_area('CHORD')
+        brace_areas = np.ones(3) * self.member_area('BRACE')
+        areas = np.array([chord_areas, brace_areas, chord_areas, brace_areas])
+
+        return forces / areas
+
+    def k_stress_magnification(self):
+        ''''''
+        bd = df = 1.5    # k-joint, chords
+        cd = de = 1.2    # k-joint, braces
+        return np.array([bd, cd, df, de])
+
+    def adjusted_stress(self):
+        ''''''
+        nominal_stress = self.nominal_stress()
+        magnification  = self.k_stress_magnification().reshape(4, 1)
+        return nominal_stress * magnification
     def export(self, overwrite=True):
         ''''''
         if not overwrite:
@@ -134,3 +155,15 @@ class Designer:
         # Table 6
         dynamic_reaction = self.dynamic_reaction()
         dw.write('AFX', dynamic_reaction)
+
+        # Table 7
+        nominal_stress = self.nominal_stress() / 10**6
+        dw.write('BD', nominal_stress, table=7)
+
+        # Table 8
+        magnification_factors = self.k_stress_magnification()
+        dw.write('BD', magnification_factors.reshape(4, 1), table=8)
+
+        # Table 9
+        adjusted_stress = self.adjusted_stress() / 10**6
+        dw.write('BD', adjusted_stress, table=9)
