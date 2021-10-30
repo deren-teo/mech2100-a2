@@ -167,3 +167,5 @@ class Designer:
         # Table 9
         adjusted_stress = self.adjusted_stress() / 10**6
         dw.write('BD', adjusted_stress, table=9)
+
+        dw.save()

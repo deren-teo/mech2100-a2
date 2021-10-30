@@ -25,4 +25,7 @@ class DataWriter:
             rownum += 1
 
         self.sh.range(f'{vcol}{rownum}').value = value
+
+    def save(self):
+        ''''''
         self.wb.save()
