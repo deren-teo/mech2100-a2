@@ -1,0 +1,6 @@
+xlwings
+numpy
+melib
+pylatex
+matplotlib
+openpyxl
