@@ -45,7 +45,7 @@ class Designer:
         a = self.si(self.data['A'])
         b = self.si(self.data['B'])
 
-        return -2 * self.member_force(strain, modulus, area) * \
+        return 2 * self.member_force(strain, modulus, area) * \
             np.cos(np.arctan(a / b))
 
     def gravity_load(self):
@@ -77,8 +77,8 @@ class Designer:
         a = self.si(self.data['A'])
         b = self.si(self.data['B'])
 
-        afx = 5 * a * half_peak_forces / b
-        afy = -half_peak_forces
+        afx = -5 * a * half_peak_forces / b
+        afy = half_peak_forces
         bfx = -afx
         bfy = np.zeros(3) # roller support, no vertical reaction
 
@@ -93,16 +93,16 @@ class Designer:
         b = self.data['B']['val']
         theta = np.arctan(b / a)
 
-        ab = ay
-        ac = -ax
+        ab = -ay
+        ac = ax
         bc = half_peak_forces / np.sin(theta)
-        bd = -bx - bc * np.cos(theta)
+        bd = bx - bc * np.cos(theta)
         cd = -bc
-        ce = ac + np.cos(theta) * (2 * bc)
+        ce = np.cos(theta) * (2 * bc) + ac
         de = bc
-        df = bd + np.cos(theta) * (2 * cd)
+        df = np.cos(theta) * (2 * cd) + bd
         ef = cd
-        eg = ce + np.cos(theta) * (2 * de)
+        eg = np.cos(theta) * (2 * de) + ce
         fg = bc
         fh = np.zeros(3)
         gh = -half_peak_forces
@@ -133,6 +133,48 @@ class Designer:
         nominal_stress = self.nominal_stress()
         magnification  = self.k_stress_magnification().reshape(4, 1)
         return nominal_stress * magnification
+
+    def fatigue_life(self):
+        ''''''
+        stresses = np.abs(self.adjusted_stress() / 10**6)
+        tr = self.data['TCHORD']['val'] / self.data['TBRACE']['val']
+        joint = 'K' # joint D is a K-joint
+        overlap = (self.data['JOINTTYPE']['val'] == 'overlap')
+
+        ec3lives = np.zeros(stresses.shape)
+
+        for (i, j), stress in np.ndenumerate(stresses):
+            ec3lives[i, j] = mlib.ec3life(stress, tr, joint, overlap)[0]
+
+        nperhour = self.data['NPERHOUR']['val'] / 8
+        lifetimes = np.power(np.sum(nperhour / ec3lives, axis=1), -1)
+
+        return np.min(lifetimes)
+
+    def pin_diameters(self):
+        ''''''
+        gravity_reaction = self.gravity_load()[3:].reshape(4, 1)
+        dynamic_reaction = self.dynamic_reaction()
+        pin_loads = gravity_reaction + dynamic_reaction
+
+        fa = 0.5 * np.max(np.linalg.norm(pin_loads[:2, :], axis=0))
+        fb = 0.5 * np.max(np.linalg.norm(pin_loads[2:, :], axis=0))
+
+        staticfos = self.data['STATICFOS']['val']
+        pinyield  = self.data['PINYIELD']['val'] * 10**6
+
+        adia = np.sqrt(4 * fa * staticfos / (0.5 * np.pi * pinyield))
+        bdia = np.sqrt(4 * fb * staticfos / (0.5 * np.pi * pinyield))
+
+        return np.array([adia, bdia])
+
+    def physical_results(self):
+        ''''''
+        life = self.fatigue_life()
+        adia, bdia = self.pin_diameters() * 1000
+
+        return np.array([life, adia, bdia])
+
     def export(self, overwrite=True):
         ''''''
         if not overwrite:
@@ -167,5 +209,9 @@ class Designer:
         # Table 9
         adjusted_stress = self.adjusted_stress() / 10**6
         dw.write('BD', adjusted_stress, table=9)
+
+        # Table 10
+        physical_results = self.physical_results()
+        dw.write('LIFE', physical_results.reshape(3, 1))
 
         dw.save()
