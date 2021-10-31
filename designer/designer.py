@@ -156,8 +156,11 @@ class Designer:
 
     def nominal_stress(self):
         '''
-        Calculates the stress experienced by chord members due to the load
-        on the truss.
+        Calculates the stress range experienced by chord members due to the
+        load on the truss.
+
+        Note that the stress ranges between zero and the peak stress, so the
+        stress range is simple the magnitude of the peak stress.
         '''
         dynamic_loading = self.dynamic_load()
         bd, cd = dynamic_loading[3], dynamic_loading[8]
@@ -168,7 +171,7 @@ class Designer:
         brace_areas = np.ones(3) * self.member_area('BRACE')
         areas = np.array([chord_areas, brace_areas, chord_areas, brace_areas])
 
-        return forces / areas
+        return np.abs(forces / areas)
 
     def k_stress_magnification(self):
         '''
@@ -181,8 +184,12 @@ class Designer:
 
     def adjusted_stress(self):
         '''
-        Calculates the adjusted stress experienced by chord members due to the
-        load on the truss, adjusted by appropriate magnification factors.
+        Calculates the adjusted stress range experienced by chord members
+        due to the load on the truss, adjusted by appropriate
+        magnification factors.
+
+        Note that the stress ranges between zero and the peak stress, so the
+        stress range is simple the magnitude of the peak stress.
         '''
         nominal_stress = self.nominal_stress()
         magnification  = self.k_stress_magnification().reshape(4, 1)
@@ -193,7 +200,7 @@ class Designer:
         Calculates the expected life in hours of the truss according
         to EuroCode 3.
         '''
-        stresses = np.abs(self.adjusted_stress() / 10**6)
+        stresses = self.adjusted_stress() / 10**6
         tr = self.data['TCHORD']['val'] / self.data['TBRACE']['val']
         joint = 'K' # joint D is a K-joint
         overlap = (self.data['JOINTTYPE']['val'] == 'overlap')
