@@ -20,7 +20,10 @@ class Designer:
         return quantity['val'] / 1000
 
     def member_area(self, member_type):
-        ''''''
+        '''
+        Calculates the area of a member based on whether it is a chord
+        or brace.
+        '''
         member_type = member_type.upper()
 
         if not member_type in ['CHORD', 'BRACE']:
@@ -32,11 +35,19 @@ class Designer:
         return np.pi * (np.power(r, 2) - np.power(r - t, 2))
 
     def member_force(self, strain, modulus, area):
-        ''''''
+        '''
+        Calculates the force on a member given its strain, elastic
+        modulus and area.
+        '''
         return (strain * modulus) * area
 
     def peak_forces(self):
-        '''Calculates peak applied load forces.'''
+        '''
+        Calculates peak applied load forces.
+
+        Assumes that if the member strains are positive, the member must be
+        in tension.
+        '''
 
         strain = self.data['PEAKSTRAIN']['val']
         modulus = self.data['MODULUS']['val']
@@ -48,8 +59,14 @@ class Designer:
         return 2 * self.member_force(strain, modulus, area) * \
             np.cos(np.arctan(a / b))
 
-    def gravity_load(self):
-        ''''''
+    def static_force(self):
+        '''
+        Calculates the force on the supports exerted by the weight of
+        the truss.
+
+        Sign convention: upwards is positive y-direction, left-to-right
+        is positive x-direction.
+        '''
         centx = self.data['A']['val'] * 2.5 # centroid x position, mm
         centy = self.data['B']['val'] * 0.5 # centroid y position, mm
 
@@ -59,58 +76,89 @@ class Designer:
         brace_len = 12 * b + 10 * np.linalg.norm([a, b])
         chord_vol = chord_len * self.member_area('CHORD')
         brace_vol = brace_len * self.member_area('BRACE')
-        weight = self.data['DENSITY']['val'] * (chord_vol + brace_vol)
+        mass = self.data['DENSITY']['val'] * (chord_vol + brace_vol)
 
         g = self.data['GRAV']['val']    # acceleration due to gravity, m/s^2
-        gforce = -0.5 * weight * g      # weight force, N
-        agravx = -2.5 * a * gforce / b
-        agravy = gforce
+        wforce = -0.5 * mass * g        # weight force acting on one side, N
+        agravx = -2.5 * (a / b) * wforce
+        agravy = wforce
         bgravx = -agravx
         bgravy = 0  # roller support, no vertical reaction
 
-        return np.array([centx, centy, weight, agravx, agravy, bgravx, bgravy])
+        return np.array([centx, centy, mass, agravx, agravy, bgravx, bgravy])
 
-    def dynamic_reaction(self):
-        ''''''
-        half_peak_forces = 0.5 * self.peak_forces()
+    def static_reaction(self):
+        '''
+        Calculates the support reactions due to the weight of the truss.
+
+        Sign convention: upwards is positive y-direction, left-to-right
+        is positive x-direction.
+        '''
+        return -self.static_force()
+
+    def dynamic_force(self):
+        '''
+        Calculates the force on the supports exerted by the load on the truss.
+
+        Sign convention: upwards is positive y-direction, left-to-right
+        is positive x-direction.
+        '''
+        load_force = 0.5 * self.peak_forces() # load force acting on one side
 
         a = self.si(self.data['A'])
         b = self.si(self.data['B'])
 
-        afx = -5 * a * half_peak_forces / b
-        afy = half_peak_forces
+        afx = -5 * (a / b) * load_force
+        afy = load_force
         bfx = -afx
         bfy = np.zeros(3) # roller support, no vertical reaction
 
         return np.array([afx, afy, bfx, bfy])
 
+    def dynamic_reaction(self):
+        '''
+        Calculates the support reactions due to the load on the truss.
+
+        Sign convention: upwards is positive y-direction, left-to-right
+        is positive x-direction.
+        '''
+        return -self.dynamic_force()
+
     def dynamic_load(self):
-        ''''''
+        '''
+        Calculates the member forces due to the load on the truss.
+
+        Sign convention: upwards is positive y-direction, left-to-right
+        is positive x-direction, tension is positive member force.
+        '''
         ax, ay, bx, _ = self.dynamic_reaction()
-        half_peak_forces = 0.5 * self.peak_forces()
+        load_force = 0.5 * self.peak_forces() # load force acting on one side
 
         a = self.data['A']['val']
         b = self.data['B']['val']
-        theta = np.arctan(b / a)
+        alpha = np.arctan(b / a)
 
-        ab = -ay
-        ac = ax
-        bc = half_peak_forces / np.sin(theta)
-        bd = bx - bc * np.cos(theta)
+        ab = ay
+        ac = -ax
+        bc = -ab / np.sin(alpha)
+        bd = -bx - bc * np.cos(alpha)
         cd = -bc
-        ce = np.cos(theta) * (2 * bc) + ac
-        de = bc
-        df = np.cos(theta) * (2 * cd) + bd
-        ef = cd
-        eg = np.cos(theta) * (2 * de) + ce
-        fg = bc
+        ce = ac + 2 * bc * np.cos(alpha)
+        de = -cd
+        df = bd + 2 * cd * np.cos(alpha)
+        ef = -de
+        eg = ce + 2 * de * np.cos(alpha)
+        fg = -ef
         fh = np.zeros(3)
-        gh = -half_peak_forces
+        gh = -load_force
 
         return np.array([ac, ce, eg, bd, df, fh, ab, bc, cd, de, ef, fg, gh])
 
     def nominal_stress(self):
-        ''''''
+        '''
+        Calculates the stress experienced by chord members due to the load
+        on the truss.
+        '''
         dynamic_loading = self.dynamic_load()
         bd, cd = dynamic_loading[3], dynamic_loading[8]
         df, de = dynamic_loading[4], dynamic_loading[9]
@@ -123,19 +171,28 @@ class Designer:
         return forces / areas
 
     def k_stress_magnification(self):
-        ''''''
-        bd = df = 1.5    # k-joint, chords
-        cd = de = 1.2    # k-joint, braces
+        '''
+        Determines the correct stress magnification factors for the each of
+        the members in the specified joint.
+        '''
+        bd = df = 1.5    # all chords
+        cd = de = 1.2    # k-joint braces
         return np.array([bd, cd, df, de])
 
     def adjusted_stress(self):
-        ''''''
+        '''
+        Calculates the adjusted stress experienced by chord members due to the
+        load on the truss, adjusted by appropriate magnification factors.
+        '''
         nominal_stress = self.nominal_stress()
         magnification  = self.k_stress_magnification().reshape(4, 1)
         return nominal_stress * magnification
 
     def fatigue_life(self):
-        ''''''
+        '''
+        Calculates the expected life in hours of the truss according
+        to EuroCode 3.
+        '''
         stresses = np.abs(self.adjusted_stress() / 10**6)
         tr = self.data['TCHORD']['val'] / self.data['TBRACE']['val']
         joint = 'K' # joint D is a K-joint
@@ -152,10 +209,12 @@ class Designer:
         return np.min(lifetimes)
 
     def pin_diameters(self):
-        ''''''
-        gravity_reaction = self.gravity_load()[3:].reshape(4, 1)
+        '''
+        Calculates the minimum pin diamters of the supports.
+        '''
+        static_reaction = self.static_reaction()[3:].reshape(4, 1)
         dynamic_reaction = self.dynamic_reaction()
-        pin_loads = gravity_reaction + dynamic_reaction
+        pin_loads = static_reaction + dynamic_reaction
 
         fa = 0.5 * np.max(np.linalg.norm(pin_loads[:2, :], axis=0))
         fb = 0.5 * np.max(np.linalg.norm(pin_loads[2:, :], axis=0))
@@ -169,14 +228,19 @@ class Designer:
         return np.array([adia, bdia])
 
     def physical_results(self):
-        ''''''
+        '''
+        Calculates a number of physical results for the truss. (I.e. expected
+        life in hours and minimum clevis-pin support pin diameters.)
+        '''
         life = self.fatigue_life()
         adia, bdia = self.pin_diameters() * 1000
 
         return np.array([life, adia, bdia])
 
     def export(self, overwrite=True):
-        ''''''
+        '''
+        Writes the calculations to given Excel file.
+        '''
         if not overwrite:
             raise NotImplementedError('Writing to new file not supported')
 
@@ -187,16 +251,16 @@ class Designer:
         dw.write('PEAKFORCE', peak_forces)
 
         # Table 4
-        gravity_loading = self.gravity_load()
-        dw.write('CENTX', gravity_loading.reshape(7, 1))
+        static_force = self.static_force()
+        dw.write('CENTX', static_force.reshape(7, 1))
 
         # Table 5
         dynamic_loading = self.dynamic_load()
         dw.write('AC', dynamic_loading)
 
         # Table 6
-        dynamic_reaction = self.dynamic_reaction()
-        dw.write('AFX', dynamic_reaction)
+        dynamic_force = self.dynamic_force()
+        dw.write('AFX', dynamic_force)
 
         # Table 7
         nominal_stress = self.nominal_stress() / 10**6
