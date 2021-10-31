@@ -223,6 +223,7 @@ class Designer:
         dynamic_reaction = self.dynamic_reaction()
         pin_loads = static_reaction + dynamic_reaction
 
+        # Note: factor of 0.5 because pin is supported at both ends
         fa = 0.5 * np.max(np.linalg.norm(pin_loads[:2, :], axis=0))
         fb = 0.5 * np.max(np.linalg.norm(pin_loads[2:, :], axis=0))
 
